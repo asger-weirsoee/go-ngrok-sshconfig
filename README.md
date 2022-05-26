@@ -41,3 +41,33 @@ Host token_name2
 ```
 
 There might be something to say about being able to change the User, and choose if you want the srveraliveinterval thingy, but that would be a future work.
+
+## Examples for usage:
+
+### Systemd service on server:
+```
+[Unit]
+Description=Ngrok
+After=network.service
+
+[Service]
+type=simple
+User=maskine
+WorkinDirectory=/home/maskine
+ExecStart=/snap/bin/ngrok start --all --config="/home/maskine/ngrok_shit/config.yml"
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Config on server:
+```
+authtoken: authtoken
+tunnels:
+    default:
+        proto: tcp
+        addr: 22
+version: "2"
+region: eu
+```
