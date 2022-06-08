@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/kevinburke/ssh_config"
+	"github.com/ngrok/ngrok-api-go/v4"
 	"github.com/ngrok/ngrok-api-go/v4/tunnels"
 	"os"
 	"path/filepath"
 	"strings"
+)
 
-	"github.com/ngrok/ngrok-api-go/v4"
+var (
+	onlyPrint         bool
+	sshConfigLocation string
 )
 
 type Hosts struct {
@@ -19,6 +24,11 @@ type Hosts struct {
 }
 
 func main() {
+
+	flag.BoolVar(&onlyPrint, "p", false, "Only print the tunnel urls")
+	flag.StringVar(&sshConfigLocation, "c", filepath.Join(os.Getenv("HOME"), ".ssh", "config"), "Location of the ssh config file")
+	flag.Parse()
+
 	var allTokens = readTokenFromFile(".token")
 	for _, token := range allTokens {
 		fmt.Println("ProcessName: ", token[1])
@@ -27,7 +37,9 @@ func main() {
 		fmt.Print(out)
 		fmt.Println()
 		kk := strings.Split(out, ":")
-		editConfig(token[1], kk[0], kk[1])
+		if !onlyPrint {
+			editConfig(token[1], kk[0], kk[1])
+		}
 	}
 
 	fmt.Println()
@@ -78,7 +90,7 @@ func editConfig(name string, host string, port string) {
 	if name == "" {
 		return
 	}
-	f, _ := os.Open(filepath.Join(os.Getenv("HOME"), ".ssh", "config"))
+	f, _ := os.Open(sshConfigLocation)
 	defer func(f *os.File) {
 		err := f.Close()
 		if err != nil {
@@ -93,7 +105,7 @@ func editConfig(name string, host string, port string) {
 		}
 	}
 
-	f, _ = os.OpenFile(filepath.Join(os.Getenv("HOME"), ".ssh", "config"), os.O_WRONLY, 0644)
+	f, _ = os.OpenFile(sshConfigLocation, os.O_WRONLY, 0644)
 	_, _ = f.WriteString(cfg.String())
 	_, _ = f.WriteString("\nHost " + name + "\n     HostName " + host + "\n     Port " + port + "\n     User maskine\n     ServerAliveInterval 300\n     ServerAliveCountMax 3")
 	defer func(f *os.File) {
