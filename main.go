@@ -7,6 +7,7 @@ import (
 	"github.com/kevinburke/ssh_config"
 	"github.com/ngrok/ngrok-api-go/v4"
 	"github.com/ngrok/ngrok-api-go/v4/tunnels"
+	"ngrok_url/utils"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,36 +18,33 @@ var (
 	sshConfigLocation string
 )
 
-type Hosts struct {
-	ID     string `json:"ID,omitempty"`
-	Name   string `json:"Name,omitempty"`
-	ApiKey string `json:"ApiKey,omitempty"`
-}
-
 func main() {
 
 	flag.BoolVar(&onlyPrint, "p", false, "Only print the tunnel urls")
-	flag.StringVar(&sshConfigLocation, "c", filepath.Join(os.Getenv("HOME"), ".ssh", "config"), "Location of the ssh config file")
+	flag.StringVar(&sshConfigLocation, "c", "", "Location of the ssh config file")
 	flag.Parse()
-
-	var allTokens = readTokenFromFile(".token")
-	for _, token := range allTokens {
-		fmt.Println("ProcessName: ", token[1])
-		fmt.Print("URL & PORT: ")
-		out := listTunnelUrls(context.Background(), token[0])
-		fmt.Print(out)
-		fmt.Println()
-		kk := strings.Split(out, ":")
-		if !onlyPrint {
-			editConfig(token[1], kk[0], kk[1])
-		}
+	if sshConfigLocation != "" && onlyPrint {
+		fmt.Println("You can't use both the -p and -c flags")
+		os.Exit(1)
+	} else {
+		sshConfigLocation = filepath.Join(os.Getenv("HOME"), ".ssh", "config")
 	}
 
-	fmt.Println()
+	var hosts = make([]*utils.Host, 0)
+	var allTokens = readTokenFromFile(".token")
+	for _, token := range allTokens {
+		tmpHost := utils.NewHost(token[1], token[2], listTunnelUrls(context.Background(), token[0]))
+		hosts = append(hosts, tmpHost)
+		fmt.Println("Process name:  " + tmpHost.Name)
+		fmt.Println(fmt.Sprintf("ssh -p %s %s@%s ", tmpHost.Port, tmpHost.Usr, tmpHost.Host))
+	}
+	if !onlyPrint {
+		editConfig(hosts)
+	}
 }
 
-func readTokenFromFile(file_path string) [][]string {
-	token, err := os.ReadFile(file_path)
+func readTokenFromFile(filePath string) [][]string {
+	token, err := os.ReadFile(filePath)
 	if err != nil {
 		panic(err)
 	}
@@ -61,7 +59,7 @@ func readTokenFromFile(file_path string) [][]string {
 	return res
 }
 
-func listTunnelUrls(ctx context.Context, token string) string {
+func listTunnelUrls(ctx context.Context, token string) *utils.ApiRes {
 	// construct the api client
 	clientConfig := ngrok.NewClientConfig(token)
 	var out string
@@ -72,24 +70,19 @@ func listTunnelUrls(ctx context.Context, token string) string {
 	for iter.Next(ctx) {
 		url := iter.Item().PublicURL
 		out = strings.TrimPrefix(url, "tcp://")
-		tot_port := strings.Split(out, ":")
-		out = tot_port[0]
-		port = tot_port[1]
+		totPort := strings.Split(out, ":")
+		out = totPort[0]
+		port = totPort[1]
 
 	}
 	if err := iter.Err(); err != nil {
-		return ""
+		return &utils.ApiRes{Error: err}
 	}
-	return out + ":" + port
+	return &utils.ApiRes{Host: out, Port: port}
 }
 
-func editConfig(name string, host string, port string) {
-	// Open for ssh config
-	// Find the host, and remove it from the config if it exsits
-	// Then add the host, to keep valid data
-	if name == "" {
-		return
-	}
+func editConfig(allHosts []*utils.Host) {
+
 	f, _ := os.Open(sshConfigLocation)
 	defer func(f *os.File) {
 		err := f.Close()
@@ -98,16 +91,22 @@ func editConfig(name string, host string, port string) {
 		}
 	}(f)
 	cfg, _ := ssh_config.Decode(f)
-	for host_index, hosts := range cfg.Hosts {
-		if hosts.Patterns[0].String() == name {
-			cfg.Hosts = remove(cfg.Hosts, host_index)
-			fmt.Println("Removed: ", name)
+
+	for hostIndex, hosts := range cfg.Hosts {
+		// Check if hosts.Patterns[0].String() is in the list of allHosts for the Name
+		for _, host := range allHosts {
+			if host.Name == hosts.Patterns[0].String() {
+				cfg.Hosts = remove(cfg.Hosts, hostIndex)
+				fmt.Println("Removed: ", host.Name)
+			}
 		}
 	}
 
 	f, _ = os.OpenFile(sshConfigLocation, os.O_WRONLY, 0644)
 	_, _ = f.WriteString(cfg.String())
-	_, _ = f.WriteString("\nHost " + name + "\n     HostName " + host + "\n     Port " + port + "\n     User maskine\n     ServerAliveInterval 300\n     ServerAliveCountMax 3")
+	for _, host := range allHosts {
+		_, _ = f.WriteString("\nHost " + host.Name + "\n     HostName " + host.Host + "\n     Port " + host.Port + "\n     User " + host.Usr + "\n     ServerAliveInterval 300\n     ServerAliveCountMax 3")
+	}
 	defer func(f *os.File) {
 		err := f.Close()
 		if err != nil {

@@ -16,8 +16,8 @@ The .token file is a .csv file, where the first index should be your ngrok api k
 Every line in the .token file is a new set of api key and machine name.
 
 ```
-token,token_name
-token2,token_name2
+token,token_name,agc
+token2,token_name2,cba
 
 ```
 
@@ -28,23 +28,22 @@ would result in a hosts file looking like:
 Host token_name
     HostName (ngrok url from api key)
     Port (ngrok port from api key)
-    User (This is only "maskine" for now)
+    User abc
     ServerAliveInterval 300
     ServerAliveCountMax 3
 
 Host token_name2
     HostName (ngrok url from api key)
     Port (ngrok port from api key)
-    User (This is only "maskine" for now)
+    User cba
     ServerAliveInterval 300
     ServerAliveCountMax 3
 ```
 
-There might be something to say about being able to change the User, and choose if you want the srveraliveinterval thingy, but that would be a future work.
 
-## Examples for usage:
+## Examples of server setup:
 
-### Systemd service on server:
+### /etc/systemd/system/ngrok.service:
 ```
 [Unit]
 Description=Ngrok
@@ -54,14 +53,14 @@ After=network.service
 type=simple
 User=maskine
 WorkinDirectory=/home/maskine
-ExecStart=/snap/bin/ngrok start --all --config="/home/maskine/ngrok_shit/config.yml"
+ExecStart=/usr/bin/ngrok start --all --config="/home/maskine/ngrok_config/config.yml"
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-### Config on server:
+### ~/ngrok_config/config.yml:
 ```
 authtoken: authtoken
 tunnels:
